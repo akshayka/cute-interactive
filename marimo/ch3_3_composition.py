@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -40,12 +40,12 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, Tile, size, cosize, rank, depth, mode, flatten, coalesce
+    from tensor_layouts import Layout, Tile, size, mode, coalesce
     from tensor_layouts import compose, complement, logical_divide, logical_product
     from tensor_layouts import zipped_divide, tiled_divide, flat_divide
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts.viz import draw_layout, draw_tv_layout
 
-    return Layout, Tile, coalesce, compose, draw_layout, mode, size
+    return Layout, Tile, coalesce, compose, draw_layout, draw_tv_layout, mode, size
 
 
 @app.cell
@@ -445,7 +445,7 @@ def _(mo):
 
 
 @app.cell
-def _(Layout, draw_layout, mode, size):
+def _(Layout, draw_layout, draw_tv_layout, mode, size):
     # Thread-Value Layout for Ampere FP64 Tensor Core C-matrix
     # Maps (thread_idx, value_idx) -> 1D coordinate in 8x8 matrix
     tv_layout = Layout(((4, 8), 2), ((16, 1), 8))
@@ -457,6 +457,7 @@ def _(Layout, draw_layout, mode, size):
     # Visualize the TV layout — this shows which thread and value own each element
     print("Thread-Value partitioning pattern (TV layout):")
     draw_layout(tv_layout, colorize=True)
+    draw_tv_layout(tv_layout, colorize=True)
     return (tv_layout,)
 
 

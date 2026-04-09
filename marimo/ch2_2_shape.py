@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -47,34 +47,34 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, cosize, rank, depth, mode, idx2crd
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts import Layout, size, mode, idx2crd, crd2idx, compatible
+    from tensor_layouts.viz import draw_layout
 
-    return Layout, depth, draw_layout, idx2crd, rank, size
+    return Layout, compatible, crd2idx, draw_layout, idx2crd, mode, size
 
 
 @app.cell
-def _(idx2crd):
+def _(Layout, idx2crd, size):
     # Demonstrate the 1D <-> 2D bijection for shape (M, N)
-    _M, _N = (3, 4)
-    print(f'Shape ({_M}, {_N}) has {_M * _N} elements.')
-    print(f'\n1D integral coordinates <-> 2D natural coordinates:')
-    for _i in range(_M * _N):
-        _crd = idx2crd(_i, (_M, _N))
-        print(f'  i={_i:2d}  <->  (m, n) = {_crd}')
+    _L = Layout((3, 4))
+    print(f"Shape {_L.shape} has {size(_L)} elements.")
+    print(f"\n1D integral coordinates <-> 2D natural coordinates:")
+    for _i in range(size(_L)):
+        _crd = idx2crd(_i, _L)
+        print(f"  i={_i:2d}  <->  (m, n) = {_crd}")
     return
 
 
 @app.cell
-def _():
+def _(Layout, idx2crd, mode, size):
     # Hierarchical shape: (M, (N, P)) — the 2D shape (M, NP) refined
-    _M, _N, P = (3, 2, 4)
-    print(f'Hierarchical shape ({_M}, ({_N}, {P})) has {_M * _N * P} elements.')
-    print(f'\n2D coords (m, q) <-> natural coords (m, (n, p)):')
-    for q in range(_N * P):
-        for _m in range(_M):
-            _n, p = (q % _N, q // _N)
-            print(f'  (m, q) = ({_m}, {q:2d})  <->  (m, (n, p)) = ({_m}, ({_n}, {p}))')
+    _L = Layout((3, (2, 4)))
+    print(f"Hierarchical shape {_L.shape} has {size(_L)} elements.")
+    print(f"\n2D coords (m, q) <-> natural coords (m, (n, p)):")
+    for _i in range(size(_L)):
+        _crd_2d = idx2crd(_i, (size(mode(_L, 0)), size(mode(_L, 1))))
+        _crd_hier = idx2crd(_i, _L.shape)
+        print(f"  (m, q) = {_crd_2d}  <->  (m, (n, p)) = {_crd_hier}")
     return
 
 
@@ -99,18 +99,10 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(idx2crd, size):
     def coord_set(shape):
         """Generate the coordinate set Z_S for a given shape, in colexicographic order."""
-        if isinstance(shape, int):
-            return list(range(shape))
-        else:
-            # Cartesian product in colexicographic order (first mode varies fastest)
-            sub_sets = [coord_set(s) for s in shape]
-            result = [()]
-            for ss in sub_sets:
-                result = [prev + (c,) for c in ss for prev in result]
-            return result
+        return [idx2crd(i, shape) for i in range(size(shape))]
 
     print("Z_6 =", coord_set(6))
     print()
@@ -145,42 +137,23 @@ def _(mo):
 
 
 @app.cell
-def _():
-    def shape_size(s):
-        """Compute |S| — the product of all integers in a (possibly nested) shape."""
-        if isinstance(s, int):
-            return s
-        result = 1
-        for x in s:
-            result *= shape_size(x)
-        return result
-
-    def is_compatible(p, s):
-        """Check if shape P coarsens shape S (P ⪯ S)."""
-        if isinstance(p, int):
-            return p == shape_size(s)
-        if isinstance(s, int):
-            return False  # tuple can't coarsen an int (unless p is int, handled above)
-        if len(p) != len(s):
-            return False
-        return all(is_compatible(pi, si) for pi, si in zip(p, s))
-
+def _(compatible):
     # 30 ⪯ (2, 15) ⪯ (2, (3, 5))
-    print(f"30 ⪯ (2, 15):       {is_compatible(30, (2, 15))}")
-    print(f"(2, 15) ⪯ (2, (3,5)): {is_compatible((2, 15), (2, (3, 5)))}")
-    print(f"30 ⪯ (2, (3, 5)):   {is_compatible(30, (2, (3, 5)))}")
+    print(f'30 ⪯ (2, 15):       {compatible(30, (2, 15))}')
+    print(f'(2, 15) ⪯ (2, (3,5)): {compatible((2, 15), (2, (3, 5)))}')
+    print(f'30 ⪯ (2, (3, 5)):   {compatible(30, (2, (3, 5)))}')
     print()
 
     # 30 ⪯ (6, 5) ⪯ ((3, 2), 5)
-    print(f"30 ⪯ (6, 5):        {is_compatible(30, (6, 5))}")
-    print(f"(6, 5) ⪯ ((3,2),5): {is_compatible((6, 5), ((3, 2), 5))}")
+    print(f'30 ⪯ (6, 5):        {compatible(30, (6, 5))}')
+    print(f'(6, 5) ⪯ ((3,2),5): {compatible((6, 5), ((3, 2), 5))}')
     print()
 
     # (2, (3, 5)) and ((3, 2), 5) are NOT compatible
-    print(f"(2,(3,5)) ⪯ ((3,2),5): {is_compatible((2, (3, 5)), ((3, 2), 5))}")
-    print(f"((3,2),5) ⪯ (2,(3,5)): {is_compatible(((3, 2), 5), (2, (3, 5)))}")
+    print(f'(2,(3,5)) ⪯ ((3,2),5): {compatible((2, (3, 5)), ((3, 2), 5))}')
+    print(f'((3,2),5) ⪯ (2,(3,5)): {compatible(((3, 2), 5), (2, (3, 5)))}')
     print("Both have size 30, but they are not compatible.")
-    return (shape_size,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -202,52 +175,6 @@ def _(mo):
 
     Note that if shape $P$ coarsens shape $S$, then $\mathcal{Z}(P) \subseteq \mathcal{Z}(S)$. This means that any coordinate within shape $P$ is also a coordinate within shape $S$.
     """)
-    return
-
-
-@app.cell
-def _(coord_set):
-    # Figure 2: Coordinate sets for three example shapes
-
-    # S = 4
-    print("S = 4")
-    print("Z(S) = {Z_4}")
-    print("Z_4:", coord_set(4))
-    print()
-
-    # S = (2, 3)
-    print("S = (2, 3)")
-    print("Z(S) = {Z_6, Z_(2,3)}")
-    print("Z_6:    ", coord_set(6))
-    print("Z_(2,3):", coord_set((2, 3)))
-    print()
-
-    # S = ((2, 3), 2)
-    print("S = ((2, 3), 2)")
-    print("Z(S) = {Z_12, Z_(6,2), Z_((2,3),2)}")
-    print("Z_12:        ", coord_set(12))
-    print("Z_(6,2):     ", coord_set((6, 2)))
-    print("Z_((2,3),2): ", coord_set(((2, 3), 2)))
-    return
-
-
-@app.cell
-def _(idx2crd):
-    # Tabulate the mappings from Figure 2 using idx2crd
-    print('S = (2, 3)')
-    # S = (2, 3)
-    print(f"{'Z_6':>4s}   {'Z_(2,3)':>10s}")
-    for _i in range(6):
-        _crd = idx2crd(_i, (2, 3))
-        print(f'{_i:4d}   {str(_crd):>10s}')
-    print()
-    print('S = ((2, 3), 2)')
-    print(f"{'Z_12':>4s}   {'Z_(6,2)':>10s}   {'Z_((2,3),2)':>16s}")
-    for _i in range(12):
-    # S = ((2, 3), 2)
-        crd_flat = idx2crd(_i, (6, 2))
-        crd_nat = idx2crd(_i, ((2, 3), 2))
-        print(f'{_i:4d}   {str(crd_flat):>10s}   {str(crd_nat):>16s}')
     return
 
 
@@ -274,7 +201,7 @@ def _(mo):
 
     $$i \mapsto \left(i \bmod |S_0|,\ \left\lfloor \frac{i}{|S_0|} \right\rfloor \bmod |S_1|,\ \ldots,\ \left\lfloor \frac{i}{\prod_{k=0}^{r-2} |S_k|} \right\rfloor \right) \qquad (4)$$
 
-    maps the $i$th coordinate of $\mathbb{Z}_{|S|}$ (the $i$th integral coordinate of shape $S$) to the $i$th coordinate of $\mathbb{Z}_{(|S_0|,|S_1|,\ldots,|S_{r-1}|)}$ (the $i$th natural coordinate of shape $(|S_0|, |S_1|, \ldots, |S_{r-1}|)$).
+    maps the $i\mathrm{th}$ coordinate of $\mathbb{Z}_{|S|}$ (the $i\mathrm{th}$ integral coordinate of shape $S$) to the $i\mathrm{th}$ coordinate of $\mathbb{Z}_{(|S_0|,|S_1|,\ldots,|S_{r-1}|)}$ (the $i\mathrm{th}$ natural coordinate of shape $(|S_0|, |S_1|, \ldots, |S_{r-1}|)$).
 
     The inverse of idx2crd is given by
 
@@ -282,91 +209,51 @@ def _(mo):
 
     $$( c_0, c_1, \ldots, c_{r-1}) \mapsto c_0 + c_1 \cdot |S_0| + \ldots + c_{r-1} \cdot \prod_{k=0}^{r-2} |S_k| \qquad (5)$$
 
-    which maps the $i$th coordinate of $\mathbb{Z}_{(|S_0|,|S_1|,\ldots,|S_{r-1}|)}$ to the $i$th coordinate of $\mathbb{Z}_{|S|}$.
+    which maps the $i\mathrm{th}$ coordinate of $\mathbb{Z}_{(|S_0|,|S_1|,\ldots,|S_{r-1}|)}$ to the $i\mathrm{th}$ coordinate of $\mathbb{Z}_{|S|}$.
     """)
     return
 
 
 @app.cell
-def _(idx2crd, shape_size):
-    # Implement idx2crd and crd2idx from scratch to match the formulas,
-    # then verify against the library's idx2crd.
-    def my_idx2crd(i, shape):
-        """Colexicographic mapping: integer -> natural coordinate tuple."""
-        if isinstance(shape, int):
-            return i % shape
-        coords = []
-        for s in shape:
-            s_size = shape_size(s)
-            coords.append(my_idx2crd(i % s_size, s))
-            i = i // s_size
-        return tuple(coords)
+def _(Layout, coord_set, idx2crd, size):
+    # Figure 2: Coordinate sets for three example shapes
 
-    def my_crd2idx(coord, shape):
-        """Inverse of idx2crd: natural coordinate tuple -> integer."""
-        if isinstance(shape, int):
-            return coord
-        result = 0
-        multiplier = 1
-        for c, s in zip(coord, shape):
-            s_size = shape_size(s)
-            result += my_crd2idx(c, s) * multiplier
-            multiplier *= s_size
-        return result
-    print('idx2crd for shape (2, 3):')
-    for _i in range(6):
-    # Test: shape (2, 3)
-        _crd = my_idx2crd(_i, (2, 3))
-        _back = my_crd2idx(_crd, (2, 3))
-        lib_crd = idx2crd(_i, (2, 3))
-        assert _crd == lib_crd, f'Mismatch at i={_i}: {_crd} vs {lib_crd}'
-        assert _back == _i
-        print(f'  {_i} -> {_crd} -> {_back}')
-    print('\nidx2crd for shape ((2, 3), 2):')
-    for _i in range(12):
-        _crd = my_idx2crd(_i, ((2, 3), 2))
-        _back = my_crd2idx(_crd, ((2, 3), 2))
-        lib_crd = idx2crd(_i, ((2, 3), 2))
-        assert _crd == lib_crd, f'Mismatch at i={_i}: {_crd} vs {lib_crd}'
-        assert _back == _i
-        print(f'  {_i:2d} -> {str(_crd):>16s} -> {_back:2d}')
-    print('\nAll round-trips match!')
-    return my_crd2idx, my_idx2crd
+    # S = 4
+    print("S = 4")
+    print("Z(S) = {Z_4}")
+    print("Z_4:", coord_set(4))
+    print()
+
+    # S = (2, 3)
+    _S = Layout((2, 3))
+    print("S = (2, 3)")
+    print("Z(S) = {Z_6, Z_(2,3)}")
+    print("Z_6:    ", coord_set(6))
+    print("Z_(2,3):", coord_set((2, 3)))
+    for _i in range(size(_S)):
+        _crd = idx2crd(_i, _S.shape)
+        print(f"{_i:4d}   {str(_crd):>10s}")
+    print()
+
+    # S = ((2, 3), 2)
+    _S = Layout(((2, 3), 2))
+    print("S = ((2, 3), 2)")
+    print("Z(S) = {Z_12, Z_(6,2), Z_((2,3),2)}")
+    print("Z_12:        ", coord_set(12))
+    print("Z_(6,2):     ", coord_set((6, 2)))
+    print("Z_((2,3),2): ", coord_set(((2, 3), 2)))
+    for _i in range(size(_S)):
+        _crd_flat = idx2crd(_i, (6, 2))
+        _crd_nat = idx2crd(_i, _S.shape)
+        print(f"{_i:4d}   {str(_crd_flat):>10s}   {str(_crd_nat):>16s}")
+    return
 
 
 @app.cell
-def _(Layout, depth, rank, size):
-    # Layouts accept any compatible coordinate — demonstrate with concrete layouts
-    layout = Layout(((2, 3), 2), ((1, 2), 6))
-    # A layout with hierarchical shape ((2, 3), 2)
-    print(f'Layout: {layout}')
-    print(f'  size = {size(layout)}, rank = {rank(layout)}, depth = {depth(layout)}')
-    print()
-    print('1D integral coordinates (i):')
-    offsets_1d = []
-    # Index with 1D integral coordinates
-    for _i in range(12):
-        o = layout(_i)
-        offsets_1d.append(o)
-        print(f'  layout({_i:2d}) = {o}')
-    print()
-    print('2D coarsened coordinates (m, n):')
-    offsets_2d = []
-    for _n in range(2):
-        for _m in range(6):
-    # Index with 2D coarsened coordinates (m, n) where m in Z_6, n in Z_2
-            o = layout(_m, _n)
-            offsets_2d.append(o)
-            print(f'  layout({_m}, {_n}) = {o}')
-    assert offsets_1d == offsets_2d
-    print('\n1D and 2D indexing produce the same offsets!')
-    return (layout,)
-
-
-@app.cell
-def _(draw_layout, layout):
+def _(Layout, draw_layout):
     # Visualize the layout to see the coordinate-to-offset mapping
-    print("Layout ((2,3),2):((1,2),6) — 2D view")
+    layout = Layout(((2, 3), 2), ((1, 2), 6))
+    print(f"Layout {layout} — 2D view")
     draw_layout(layout, colorize=True)
     return
 
@@ -390,27 +277,30 @@ def _(mo):
 
 
 @app.cell
-def _(my_crd2idx, my_idx2crd, shape_size):
+def _(crd2idx, idx2crd, size):
     # idx2crd is well-defined for out-of-bounds integers
     shape = (2, 3)
-    print(f'Shape: {shape}, size = {shape_size(shape)}')
+    print(f"Shape: {shape}, size = {size(shape)}")
     print()
-    print('In-bounds and out-of-bounds idx2crd:')
+    print("In-bounds and out-of-bounds idx2crd:")
     for _i in range(10):
-        _crd = my_idx2crd(_i, shape)
-        _back = my_crd2idx(_crd, shape)
-        in_bounds = _i < shape_size(shape)
-        round_trips = _back == _i
-        print(f"  i={_i}: idx2crd -> {_crd}, crd2idx -> {_back}  {('[in-bounds]' if in_bounds else '[OUT-OF-BOUNDS]')}  {('round-trips' if round_trips else 'NO round-trip')}")
+        _crd = idx2crd(_i, shape)
+        _back = crd2idx(_crd, shape)
+        _in_bounds = _i < size(shape)
+        _round_trips = (_back == _i)
+        print(f"  i={_i}: idx2crd -> {_crd}, crd2idx -> {_back}  "
+              f"{'[in-bounds]' if _in_bounds else '[OUT-OF-BOUNDS]'}  "
+              f"{'round-trips' if _round_trips else 'NO round-trip'}")
+
     print()
-    oob_coord = (0, 3)
-    result = my_crd2idx(oob_coord, shape)
-    print(f'crd2idx({oob_coord}, {shape}) = {result}')
     # Show that crd2idx does NOT guarantee out-of-bounds for out-of-bounds input
-    print(f'  This maps to {result}, which is IN the range [0, {shape_size(shape)}),')  # out-of-bounds for shape (2, 3): n=3 >= 3
-    print(f'  even though {oob_coord} is out-of-bounds for shape {shape}.')
-    print(f'  idx2crd({result}, {shape}) = {my_idx2crd(result, shape)} != {oob_coord}')
-    print('  So crd2idx and idx2crd are NOT inverses on out-of-bounds coordinates.')
+    oob_coord = (0, 3)  # out-of-bounds for shape (2, 3): n=3 >= 3
+    result = crd2idx(oob_coord, shape)
+    print(f"crd2idx({oob_coord}, {shape}) = {result}")
+    print(f"  This maps to {result}, which is IN the range [0, {size(shape)}),")
+    print(f"  even though {oob_coord} is out-of-bounds for shape {shape}.")
+    print(f"  idx2crd({result}, {shape}) = {idx2crd(result, shape)} != {oob_coord}")
+    print("  So crd2idx and idx2crd are NOT inverses on out-of-bounds coordinates.")
     return
 
 

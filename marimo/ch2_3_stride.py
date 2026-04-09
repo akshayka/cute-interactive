@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -40,42 +40,36 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, cosize, rank, depth, mode, idx2crd, crd2idx
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts import Layout, size, cosize, idx2crd, crd2offset
 
-    return Layout, cosize, idx2crd, size
+    return Layout, cosize, crd2offset, idx2crd, size
 
 
 @app.cell
-def _(Layout, idx2crd, size):
-    # The inner_product of a coordinate with a stride gives the offset.
-    # For a flat layout (4, 8) : (1, 4), the offset for coordinate (m, n) is:
+def _(Layout, crd2offset, idx2crd, size):
+    # crd2offset computes the inner product of a coordinate with a stride,
+    # giving the memory offset. For layout (4, 8) : (1, 4), coordinate (m, n):
     #   offset = m * 1 + n * 4
-    def inner_product(coord, stride):
-        """Recursive inner product of coordinate and stride tuples."""
-        if isinstance(coord, int) and isinstance(stride, int):
-            return coord * stride
-        assert len(coord) == len(stride)
-        return sum((inner_product(_c, d) for _c, d in zip(coord, stride)))
+
     shape = (4, 8)
     stride = (1, 4)
     # Example: Layout (4, 8) : (1, 4) — column-major
     L = Layout(shape, stride)
     for _i in range(size(L)):
         _coord = idx2crd(_i, shape)
-        assert inner_product(_coord, stride) == L(_i), f'Mismatch at i={_i}'
-    # Verify inner_product matches layout evaluation for all natural coordinates
-    for _i in [0, 1, 5, 22, 31]:
-        _c = idx2crd(_i, shape)  # natural coordinate
-        _ip = inner_product(_c, stride)
+        _offset = crd2offset(_coord, shape, stride)
+        assert _offset == L(_i), f'Mismatch at i={_i}'
     # Show a few examples
-        print(f'  coord {str(_c):12s} . stride {stride} = {_ip:3d}  (layout({_i}) = {L(_i)})')
-    return (inner_product,)
+    for _i in [0, 1, 5, 22, 31]:
+        _coord = idx2crd(_i, shape)
+        _offset = crd2offset(_coord, shape, stride)
+        print(f'  coord {str(_coord):6s} . stride {stride} = {_offset:3d}  (layout({_i}) = {L(_i)})')
+    return
 
 
 @app.cell
-def _(Layout, cosize, idx2crd, inner_product, size):
-    # With hierarchical/nested shapes, the inner_product recurses into sub-tuples.
+def _(Layout, cosize, crd2offset, idx2crd, size):
+    # With hierarchical/nested shapes, crd2offset recurses into sub-tuples.
     # Layout ((2, 2), (4, 2)) : ((1, 8), (2, 16))
     # For a natural coordinate ((a, b), (c, d)):
     #   offset = a*1 + b*8 + c*2 + d*16
@@ -85,11 +79,11 @@ def _(Layout, cosize, idx2crd, inner_product, size):
     print(f'Layout: {L_nested}')
     print(f'  size = {size(L_nested)}, cosize = {cosize(L_nested)}')
     print()
+    # Verify crd2offset on nested coordinates
     for _i in range(size(L_nested)):
-        _c = idx2crd(_i, nested_shape)
-        _ip = inner_product(_c, nested_stride)
-    # Verify inner_product on nested coordinates
-        assert _ip == L_nested(_i)
+        _coord = idx2crd(_i, nested_shape)
+        _offset = crd2offset(_coord, nested_shape, nested_stride)
+        assert _offset == L_nested(_i)
     _i = 22
     c_2d = idx2crd(_i, (4, 8))
     c_nat = idx2crd(_i, nested_shape)

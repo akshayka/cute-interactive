@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -43,8 +43,8 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, cosize, rank, depth, mode, flatten, coalesce
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts import Layout, size, depth, mode, coalesce
+    from tensor_layouts.viz import draw_layout
 
     return Layout, coalesce, depth, draw_layout, mode, size
 
@@ -92,15 +92,9 @@ def _(mo):
 
 
 @app.cell
-def _(A1, Layout, coalesce, mode):
+def _(A1, Layout, coalesce):
     # By-mode coalesce: apply coalesce to each mode independently
-    mode0 = mode(A1, 0)  # 2 : 1
-    mode1 = mode(A1, 1)  # (1, 6) : (6, 2)
-    print(f"Mode 0: {mode0}  ->  coalesce: {coalesce(mode0)}")
-    print(f"Mode 1: {mode1}  ->  coalesce: {coalesce(mode1)}")
-
-    # Reconstruct by-mode coalesced layout
-    R1_bymode = Layout(coalesce(mode0), coalesce(mode1))
+    R1_bymode = coalesce(A1, (None, None))
     print(f"\nBy-mode coalesced: {R1_bymode}")
     assert R1_bymode == Layout((2, 6), (1, 2))
     return

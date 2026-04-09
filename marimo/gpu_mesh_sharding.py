@@ -3,7 +3,7 @@
 # dependencies = [
 #     "marimo>=0.22.4",
 #     "matplotlib==3.10.8",
-#     "tensor-layouts==0.1.1",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 

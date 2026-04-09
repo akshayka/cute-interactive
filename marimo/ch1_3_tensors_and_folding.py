@@ -6,7 +6,7 @@ import marimo
 #     "marimo>=0.22.0",
 #     "matplotlib",
 #     "numpy",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -66,6 +66,7 @@ def _(mo):
 @app.cell
 def _():
     import numpy as np
+    import string
     _S, _T, _U, _P, _R, _Q = (2, 3, 4, 2, 3, 5)
     # Demonstrate tensor folding with numpy.einsum
     # C_{stqp} = A_{stupr} B_{qtru}
@@ -85,7 +86,7 @@ def _():
     # Red modes (k-hat):  u, r — in A and B, not in C
     # Batch modes (l-hat): t   — in A, B, and C
     print(f'  Batch (l-hat):     t     =>  folded size = {_T}')
-    return (np,)
+    return np, string
 
 
 @app.cell(hide_code=True)
@@ -173,25 +174,30 @@ def _(Layout, data, tensor_3d):
 
 
 @app.cell
-def _(Layout, draw_layout, matrix_2x4_cute, matrix_4x2_cute, tensor_3d):
+def _(Layout, draw_layout, matrix_2x4_cute, matrix_4x2_cute, string, tensor_3d):
     # Visualize all views. We use color_layout to group each pair of adjacent
     # physical elements (offsets 0-1, 2-3, 4-5, 6-7) with the same color,
     # matching Figure 1 in the paper. color_layout computes offset // 2.
 
+    labels = list(string.ascii_lowercase[:26])
+
     print("Physical data (1D, 8 contiguous elements)")
     draw_layout(Layout((1, 8), (0, 1)), colorize=True,
-                color_layout=Layout((1, (2, 4)), (0, (0, 1))), num_colors=4)
+                color_layout=Layout((1, (2, 4)), (0, (0, 1))), num_colors=4, cell_labels=labels)
 
     print("\nRank-3 tensor (2,2,2):(2,1,4)")
-    draw_layout(tensor_3d, colorize=True)
+    draw_layout(tensor_3d, colorize=True, interleave_colors=True,
+                cell_labels=labels, label_hierarchy_levels=False)
 
     print("\n4x2 matrix — fold mode 2 into 0: ((2,2),2):((2,4),1)")
     draw_layout(matrix_4x2_cute, colorize=True,
-                color_layout=Layout(((2, 2), 2), ((1, 2), 0)), num_colors=4)
+                color_layout=Layout(((2, 2), 2), ((1, 2), 0)), num_colors=4,
+                cell_labels=labels)
 
     print("\n2x4 matrix — fold mode 2 into 1: (2,(2,2)):(2,(1,4))")
     draw_layout(matrix_2x4_cute, colorize=True,
-                color_layout=Layout((2, (2, 2)), (1, (0, 2))), num_colors=4)
+                color_layout=Layout((2, (2, 2)), (1, (0, 2))), num_colors=4,
+                cell_labels=labels)
     return
 
 

@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -47,7 +47,7 @@ def _():
     from tensor_layouts import compose, complement, logical_divide, logical_product
     from tensor_layouts import zipped_divide, tiled_divide, flat_divide
     from tensor_layouts import blocked_product, raked_product
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts.viz import draw_layout
 
     return (
         Layout,
@@ -126,7 +126,7 @@ def _(L_1, Lc_1, draw_layout):
     print('L = (4,8):(1,8) — note the gaps between columns')
     draw_layout(L_1, colorize=True)
     print('\nL* = complement — fills the gaps')
-    draw_layout(Lc_1, colorize=True)
+    draw_layout(Lc_1, colorize=True, transpose=True)
     return
 
 

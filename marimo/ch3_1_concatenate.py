@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -52,8 +52,8 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, cosize, rank, depth, mode, flatten, coalesce
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts import Layout, size, mode, coalesce
+    from tensor_layouts.viz import draw_layout
 
     return Layout, coalesce, draw_layout, mode, size
 
@@ -123,7 +123,7 @@ def _(L, L0, L1, draw_layout):
     draw_layout(L, colorize=True)
 
     print(f"\nMode 0 (rows): {L0}")
-    draw_layout(L0, colorize=True)
+    draw_layout(L0, colorize=True, transpose=True)
 
     print(f"\nMode 1 (cols): {L1}")
     draw_layout(L1, colorize=True)

@@ -3,7 +3,7 @@
 # dependencies = [
 #     "marimo>=0.21.1",
 #     "matplotlib==3.10.8",
-#     "tensor-layouts==0.1.1",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -33,7 +33,6 @@ def _(mo):
 @app.cell
 def _():
     from tensor_layouts import Layout, size, idx2crd
-    from tensor_layouts.viz import show_layout
 
     # e is an opaque pure expression — we treat it as a black box
     class E:

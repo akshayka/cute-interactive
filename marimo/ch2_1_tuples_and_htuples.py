@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -32,14 +32,14 @@ def _(mo):
     For an $X = (X_0, X_1, \ldots, X_{n-1}) \in \text{Tuple}(X)$, we define the operations:
 
     - **Rank**: $\text{rank}(X)$. The tuple length $n$.
-    - **Access**: $X_i$. The $i$th element of the Tuple $X$ for $0 \le i < \text{rank}(X)$.
+    - **Access**: $X_i$. The $i\mathrm{th}$ element of the Tuple $X$ for $0 \le i < \text{rank}(X)$.
 
     Where a Tuple($T$) is a flat collection of elements, an HTuple($T$) is a "hierarchical tuple of $T$s".
 
     **Definition 2.2.** An HTuple($T$) is either an element of set $T$ or a Tuple(HTuple($T$)). For an $X \in \text{HTuple}(X)$ we define the operations:
 
     - **Rank**: $\text{rank}(X)$. If $X \in \text{Tuple}$, then the tuple length, else 1.
-    - **Access**: $X_i$. The $i$th element of an HTuple $X$ for $0 \le i < \text{rank}(X)$.
+    - **Access**: $X_i$. The $i\mathrm{th}$ element of an HTuple $X$ for $0 \le i < \text{rank}(X)$.
     - **Depth**: $\text{depth}(X)$. If $X \in \text{Tuple}$, then $1 + \max(\text{depth}(X_0), \text{depth}(X_1), \ldots)$, else 0.
     """)
     return
@@ -47,10 +47,19 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, rank, depth, mode
+    from tensor_layouts import Layout, size, rank, depth, mode, congruent, weakly_congruent
     from tensor_layouts.viz import draw_layout
 
-    return Layout, depth, draw_layout, mode, rank, size
+    return (
+        Layout,
+        congruent,
+        depth,
+        draw_layout,
+        mode,
+        rank,
+        size,
+        weakly_congruent,
+    )
 
 
 @app.cell(hide_code=True)
@@ -158,17 +167,7 @@ def _(mo):
 
 
 @app.cell
-def _():
-    def congruent(P, S):
-        """Test if two HTuples (nested Python tuples/ints) are congruent (~).
-        Two scalars are always congruent. Two tuples are congruent if they
-        have the same rank and all corresponding elements are congruent."""
-        if not isinstance(P, tuple) and not isinstance(S, tuple):
-            return True  # both scalars
-        if isinstance(P, tuple) and isinstance(S, tuple):
-            return len(P) == len(S) and all(congruent(p, s) for p, s in zip(P, S))
-        return False  # one scalar, one tuple
-
+def _(congruent):
     # Congruent examples
     assert congruent((4, 8), (5, 7))
     assert congruent((4, (2, 4)), (7, (3, 2)))
@@ -213,18 +212,7 @@ def _(mo):
 
 
 @app.cell
-def _():
-    def weakly_congruent(P, S):
-        """Test if P ≲ S (P coarsens the profile of S).
-        A scalar P is weakly congruent with anything.
-        A tuple P ≲ S requires S to also be a tuple with the same rank,
-        and each element P_i ≲ S_i."""
-        if not isinstance(P, tuple):
-            return True  # scalar coarsens anything
-        if isinstance(P, tuple) and isinstance(S, tuple):
-            return len(P) == len(S) and all(weakly_congruent(p, s) for p, s in zip(P, S))
-        return False  # P is tuple, S is scalar => not weakly congruent
-
+def _(weakly_congruent):
     # 30 ≲ (a, b) ≲ (v, (0, α))
     assert weakly_congruent(30, (1, 2))
     assert weakly_congruent((1, 2), (3, (4, 5)))
@@ -281,7 +269,7 @@ def _(Layout, depth, rank, size):
 @app.cell
 def _(L_flat_2d, draw_layout):
     # Visualize the flat layout
-    print("Flat 2D layout (4, 6):(1, 4)")
+    print(f"Flat 2D layout {L_flat_2d}")
     draw_layout(L_flat_2d, colorize=True)
     return
 
@@ -289,8 +277,10 @@ def _(L_flat_2d, draw_layout):
 @app.cell
 def _(L_hier, draw_layout):
     # Visualize the hierarchical layout
-    print("Hierarchical layout ((2,2), (3,2)):((1,2), (4,12))")
-    draw_layout(L_hier, colorize=True)
+    print(f"Hierarchical layout {L_hier}")
+    draw_layout(L_hier, colorize=True, flatten_hierarchical=False, cell_labels="offset")
+    print(f"Hierarchical layout {L_hier} with explicit row and col headers")
+    draw_layout(L_hier, flatten_hierarchical=False, label_hierarchy_levels=True, colorize=True)
     return
 
 

@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -36,7 +36,7 @@ def _(mo):
 def _():
     from tensor_layouts import Layout, size, cosize, rank, depth, mode, flatten, coalesce
     from tensor_layouts import compose, right_inverse, left_inverse, max_common_layout
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts.viz import draw_layout
 
     return (
         Layout,

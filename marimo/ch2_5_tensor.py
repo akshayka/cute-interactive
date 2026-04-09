@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -46,10 +46,10 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, Tensor, size, cosize, rank, depth, mode
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts import Layout, Tensor, size, mode
+    from tensor_layouts.viz import draw_layout, draw_slice
 
-    return Layout, Tensor, draw_layout, mode, size
+    return Layout, Tensor, draw_layout, draw_slice, mode, size
 
 
 @app.cell(hide_code=True)
@@ -97,14 +97,14 @@ def _(L, Tensor):
     print(f"  T(0,0) = {T_offset(0,0)}")
     print(f"  T(2,3) = {T_offset(2,3)}")
     print(f"  = 100 + L(2,3) = 100 + {L(2,3)} = {100 + L(2,3)}")
-    return
+    return (T_offset,)
 
 
 @app.cell
-def _(L, draw_layout):
+def _(T_offset, draw_layout):
     # Visualize the layout of our tensor
     print("Layout of the 4x8 column-major tensor:")
-    draw_layout(L, colorize=True)
+    draw_layout(T_offset, colorize=True)
     return
 
 
@@ -166,128 +166,135 @@ def _(mo):
 
 
 @app.cell
-def _(Layout, draw_layout, mode, size):
+def _(Layout, Tensor, draw_layout, mode, size):
     # Figure 5: Tensor A = {0} o ((3,2), ((2,3),2)) : ((4,1), ((2,15),100))
     # This is a 6x12 matrix with hierarchical shape
     A = Layout(((3, 2), ((2, 3), 2)), ((4, 1), ((2, 15), 100)))
+    T_A = Tensor(A)
     print(f"A = {A}")
     print(f"Shape: {A.shape}, size = {size(A)}")
     print(f"  Mode 0 size: {size(mode(A, 0))} (rows)")
     print(f"  Mode 1 size: {size(mode(A, 1))} (cols)")
     print()
     draw_layout(A, colorize=True)
-    return (A,)
+    return A, T_A
 
 
 @app.cell
-def _(A, mode, size):
+def _(A, T_A, draw_slice, mode, size):
     # Slice 1: A(2, _) -> {8} o ((2,3),2) : ((2,15),100)
     # Fix row coordinate to 2, keep all column coordinates
-    _sub = A(2, None)
-    _off = A(2, 0)
+    _slice = (2, None)
+    _Ts = T_A[_slice]
     print(f'A(2, _):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
-    for _j in range(size(mode(A, 1))):
     # Verify all elements match
-        assert A(2, _j) == _off + _sub(_j)
+    for _j in range(size(mode(A, 1))):
+        assert A(2, _j) == _Ts.offset + _Ts.layout(_j)
     print(f'  Verified: all {size(mode(A, 1))} column values match.')
+    draw_slice(T_A, _slice)
     return
 
 
 @app.cell
-def _(A, mode, size):
+def _(A, T_A, draw_slice, mode, size):
     # Slice 2: A(_, 5) -> {32} o (3,2) : (4,1)
     # Fix column coordinate to 5, keep all row coordinates
-    _sub = A(None, 5)
-    _off = A(0, 5)
+    _slice = (None, 5)
+    _Ts = T_A[_slice]
     print(f'A(_, 5):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
     for _i in range(size(mode(A, 0))):
-        assert A(_i, 5) == _off + _sub(_i)
+        assert A(_i, 5) == _Ts.offset + _Ts.layout(_i)
     print(f'  Verified: all {size(mode(A, 0))} row values match.')
+    draw_slice(T_A, _slice)
     return
 
 
 @app.cell
-def _(A, size):
+def _(A, T_A, draw_slice, size):
     # Slice 3: A(2, ((0, _), _)) -> {8} o (3, 2) : (15, 100)
     # Fix row to 2, and fix the first sub-coordinate of mode 1 to 0
-    _sub = A(2, ((0, None), None))
-    _off = A(2, 0)
+    _slice = (2, ((0, None), None))
+    _Ts = T_A[_slice]
+    print(f"Ts={_Ts}")
     print(f'A(2, ((0, _, _)):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
-    for j1 in range(3):
     # This extracts a 3x2 submatrix
+    for j1 in range(3):
         for _j2 in range(2):
-            assert A(2, ((0, j1), _j2)) == _off + _sub(j1, _j2)
-    print(f'  Verified: all {size(_sub)} values match.')
+            assert A(2, ((0, j1), _j2)) == _Ts.offset + _Ts.layout(j1, _j2)
+    print(f'  Verified: all {size(_Ts.layout)} values match.')
+    draw_slice(T_A, _slice)
     return
 
 
 @app.cell
-def _(A, mode, size):
+def _(A, T_A, draw_slice, mode, size):
     # Slice 4: A((_, 1), (_, 0)) -> {1} o (3, (2, 3)) : (4, (2, 15))
     # Fix second sub-coord of mode 0 to 1, first sub-coord of mode 1 to 0
-    _sub = A((None, 1), (None, 0))
-    _off = A((0, 1), (0, 0))
+    _slice = ((None, 1), (None, 0))
+    _Ts = T_A[_slice]
     print(f'A((_, 1), (_, 0)):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
     for _i in range(3):
-        for _j in range(size(mode(_sub, 1))):
-            assert A((_i, 1), (_j, 0)) == _off + _sub(_i, _j)
-    print(f'  Verified: all {size(_sub)} values match.')
+        for _j in range(size(mode(_Ts.layout, 1))):
+            assert A((_i, 1), (_j, 0)) == _Ts.offset + _Ts.layout(_i, _j)
+    print(f'  Verified: all {size(_Ts.layout)} values match.')
+    draw_slice(T_A, _slice)
     return
 
 
 @app.cell
-def _(A, size):
+def _(A, T_A, draw_slice, size):
     # Slice 5: A((_, 0), ((0, _), 1)) -> {100} o (3, 3) : (4, 15)
     # Fix second sub-coord of mode 0 to 0, first sub-coord of mode 1's
     # first sub-mode to 0, and mode 1's second sub-coord to 1
-    _sub = A((None, 0), ((0, None), 1))
-    _off = A((0, 0), ((0, 0), 1))
+    _slice = ((None, 0), ((0, None), 1))
+    _Ts = T_A[_slice]
     print(f'A((_, 0), ((0, _), 1)):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
     for _i in range(3):
         for _j in range(3):
-            assert A((_i, 0), ((0, _j), 1)) == _off + _sub(_i, _j)
-    print(f'  Verified: all {size(_sub)} values match.')
+            assert A((_i, 0), ((0, _j), 1)) == _Ts.offset + _Ts.layout(_i, _j)
+    print(f'  Verified: all {size(_Ts.layout)} values match.')
+    draw_slice(T_A, _slice)
     return
 
 
 @app.cell
-def _(A, size):
+def _(A, T_A, draw_slice, size):
     # Slice 6: A((1, _), ((_, 0), _)) -> {4} o (2, (2, 2)) : (1, (2, 100))
     # Fix first sub-coord of mode 0 to 1, second sub-coord of mode 1's
     # first sub-mode to 0
-    _sub = A((1, None), ((None, 0), None))
-    _off = A((1, 0), ((0, 0), 0))
+    _slice = ((1, None), ((None, 0), None))
+    _Ts = T_A[_slice]
     print(f'A((1, _), ((_, 0), _)):')
-    print(f'  offset = {_off}')
-    print(f'  sublayout = {_sub}')
-    print(f'  -> Tensor {{{_off}}} o {_sub}')
+    print(f'  offset = {_Ts.offset}')
+    print(f'  sublayout = {_Ts.layout}')
+    print(f'  -> Tensor {_Ts}')
     print()
     for i1 in range(2):
-    # Verify: sub is rank-3 since the library flattens (2, (2, 2)) -> (2, 2, 2)
         for j0 in range(2):
             for _j2 in range(2):
-                assert A((1, i1), ((j0, 0), _j2)) == _off + _sub(i1, j0, _j2)
-    print(f'  Verified: all {size(_sub)} values match.')
+                assert A((1, i1), ((j0, 0), _j2)) == _Ts.offset + _Ts.layout(i1, (j0, _j2))
+    print(f'  Verified: all {size(_Ts.layout)} values match.')
+    draw_slice(T_A, _slice)
     return
 
 

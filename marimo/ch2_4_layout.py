@@ -6,7 +6,7 @@ import marimo
 #     "marimo>=0.22.0",
 #     "matplotlib",
 #     "numpy",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -44,12 +44,24 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, size, cosize, rank, depth, mode, flatten, coalesce
-    from tensor_layouts import idx2crd, crd2flat, crd2offset
+    from tensor_layouts import Layout, Swizzle, size, cosize, rank, depth, mode, flatten, coalesce
+    from tensor_layouts import idx2crd, crd2flat, crd2offset, compose
     from tensor_layouts import prefix_product, suffix_product
-    from tensor_layouts.viz import draw_layout, show_layout
+    from tensor_layouts.viz import draw_layout
 
-    return Layout, cosize, depth, draw_layout, idx2crd, mode, rank, size
+    return (
+        Layout,
+        Swizzle,
+        compose,
+        cosize,
+        depth,
+        draw_layout,
+        flatten,
+        idx2crd,
+        mode,
+        rank,
+        size,
+    )
 
 
 @app.cell(hide_code=True)
@@ -68,7 +80,7 @@ def _(mo):
     - $\text{rank}(L) = \text{rank}(S)$: The rank of a layout is the rank of its shape.
     - $\text{depth}(L) = \text{depth}(S)$: The depth of a layout is the depth of its shape.
     - $|L| = |S|$: The size of a layout is the size of its shape.
-    - $L_i = S_i : D_i$: The $i$th sublayout is constructed from the $i$th element of its shape and stride.
+    - $L_i = S_i : D_i$: The $i\mathrm{th}$ sublayout is constructed from the $i\mathrm{th}$ element of its shape and stride.
     - $\mathcal{Z}(L) = \mathcal{Z}(S)$: The coordinate sets of a layout are the coordinate sets of its shape.
     - $L \sim U \Leftrightarrow S \sim X$: The congruence of two layouts is the congruence of their shapes.
     - $L \preceq U \Leftrightarrow S \preceq X$: The compatibility of two layouts is the compatibility of their shapes.
@@ -208,7 +220,7 @@ def _(Layout, cosize, draw_layout, size):
     L_int = Layout((4, (4, 2)), (4, (1, 16)))
     print(f"(d) Col-Major Interleave: {L_int}")
     print(f"    size={size(L_int)}, cosize={cosize(L_int)}")
-    draw_layout(L_int, colorize=True)
+    draw_layout(L_int, colorize=True, flatten_hierarchical=False, cell_labels="offset")
     return
 
 
@@ -219,7 +231,7 @@ def _(Layout, cosize, draw_layout, size):
     L_mix = Layout(((2, 2), (4, 2)), ((1, 8), (2, 16)))
     print(f"(e) Mixed: {L_mix}")
     print(f"    size={size(L_mix)}, cosize={cosize(L_mix)}")
-    draw_layout(L_mix, colorize=True)
+    draw_layout(L_mix, colorize=True, flatten_hierarchical=False, cell_labels="offset")
     return
 
 
@@ -233,7 +245,7 @@ def _(Layout, cosize, draw_layout, size):
 
     image = sorted({L_blk(i) for i in range(size(L_blk))})
     print(f"    image = {image} (only {len(image)} distinct offsets out of {size(L_blk)})")
-    draw_layout(L_blk, colorize=True)
+    draw_layout(L_blk, colorize=True, flatten_hierarchical=False, cell_labels="offset")
     return
 
 
@@ -300,8 +312,6 @@ def _(mo):
 
 @app.cell
 def _(Layout):
-    from tensor_layouts import compose
-
     # Demonstrate the key insight of completeness.
     #
     # The paper's construction has two parts:
@@ -359,36 +369,44 @@ def _(mo):
 
 
 @app.cell
-def _(Layout):
+def _(Layout, flatten):
     # Demonstrate semi-linearity of layouts
     # Layout L = ((2, 2), (4, 2)) : ((1, 8), (2, 16))
     # has natural coordinates e_c in Z_{(2,2,4,2)} — a flat 4-tuple
     _L = Layout(((2, 2), (4, 2)), ((1, 8), (2, 16)))
-    d = (1, 8, 2, 16)  # stride as flat tuple
-    e_c0 = (1, 0, 1, 0)
+    Lf = flatten(_L)
+    d = Lf.stride
     # The layout is LINEAR in natural coordinates:
     # L(alpha * e_c0 + beta * e_c1) = alpha * L(e_c0) + beta * L(e_c1)
-    e_c1 = (0, 1, 0, 1)
     # Pick two natural coordinates
-      # natural coord -> offset = 1*1 + 0*8 + 1*2 + 0*16 = 3
-    def inner_product(d, e):  # natural coord -> offset = 0*1 + 1*8 + 0*2 + 1*16 = 24
+    e_c0 = (1, 0, 1, 0)  # natural coord -> offset = 1*1 + 0*8 + 1*2 + 0*16 = 3
+    e_c1 = (0, 1, 0, 1)  # natural coord -> offset = 0*1 + 1*8 + 0*2 + 1*16 = 24
+
+    def inner_product(d, e):
         return sum((di * ei for di, ei in zip(d, e)))
+
+    # Layout evaluation IS the inner product with the stride
+    assert Lf(e_c0) == inner_product(d, e_c0) == 3
+    assert Lf(e_c1) == inner_product(d, e_c1) == 24
 
     def scale(alpha, e):
         return tuple((alpha * ei for ei in e))
 
-    def add(e0, e1):
-        return tuple((a + b for a, b in zip(e0, e1)))
     alpha, beta = (3, 2)
-    combined = add(scale(alpha, e_c0), scale(beta, e_c1))
-    lhs = inner_product(d, combined)
-    rhs = alpha * inner_product(d, e_c0) + beta * inner_product(d, e_c1)
-    print(f'd = {d}')
+
     # LHS: L(alpha * e_c0 + beta * e_c1)
+    combined = tuple(alpha * a + beta * b for a, b in zip(e_c0, e_c1))
+    lhs = inner_product(d, combined)
+
+    # RHS: alpha * L(e_c0) + beta * L(e_c1)
+    rhs = alpha * inner_product(d, e_c0) + beta * inner_product(d, e_c1)
+
+    assert Lf(combined) == alpha * Lf(e_c0) + beta * Lf(e_c1)
+
+    print(f'd = {d}')
     print(f'e_c0 = {e_c0}, L(e_c0) = d . e_c0 = {inner_product(d, e_c0)}')
     print(f'e_c1 = {e_c1}, L(e_c1) = d . e_c1 = {inner_product(d, e_c1)}')
     print(f'alpha={alpha}, beta={beta}')
-    # RHS: alpha * L(e_c0) + beta * L(e_c1)
     print(f'alpha*e_c0 + beta*e_c1 = {combined}')
     print(f'LHS: L(alpha*e_c0 + beta*e_c1) = {lhs}')
     print(f'RHS: alpha*L(e_c0) + beta*L(e_c1) = {rhs}')
@@ -411,9 +429,9 @@ def _(idx2crd):
     c0 = 3   # idx2crd(3, (4,8)) = (3, 0)
     c1 = 5   # idx2crd(5, (4,8)) = (1, 1)
 
-    nat_c0 = idx2crd(c0, shape)  # natural coord of c0
-    nat_c1 = idx2crd(c1, shape)  # natural coord of c1
-    nat_sum = idx2crd(c0 + c1, shape)  # natural coord of c0+c1=8
+    nat_c0 = idx2crd(c0, shape)  # natural coord of c0 ((1, 1), (0, 0))
+    nat_c1 = idx2crd(c1, shape)  # natural coord of c1 ((1, 0), (1, 0))
+    nat_sum = idx2crd(c0 + c1, shape)  # natural coord of c0+c1=8 ((0, 1), (0, 1))
 
     print(f"c0 = {c0}, S(c0) = idx2crd({c0}, {shape}) = {nat_c0}")
     print(f"c1 = {c1}, S(c1) = idx2crd({c1}, {shape}) = {nat_c1}")
@@ -455,33 +473,136 @@ def _(mo):
     | $L$ | Linear Form: $r = D\, e_c$ | Comment |
     |-----|-----|-----|
     | $((2,2),(4,2)):((1,8),(2,16))$ | $r = [1\ 8\ 2\ 16] \begin{bmatrix} e_{c_0} \\ e_{c_1} \\ e_{c_2} \\ e_{c_3} \end{bmatrix}$ | Integer strides are columns of $1 \times n$ $\mathbb{Z}$-matrix |
+    | $(4,(4,2)):(e_1,(e_0, 6e_1))$ | $\begin{bmatrix} r_0 \\ r_1 \end{bmatrix} = \begin{bmatrix} 0 & 1 & 0 \\ 1 & 0 & 6 \end{bmatrix} \begin{bmatrix} e_{c_0} \\ e_{c_1} \\ e_{c_2} \end{bmatrix}$ | Coordinate strides are columns of $m \times n$ $\mathbb{Z}$-matrix |
+    | $(4,4):(f_1,f_5) \cong ((2,2),(2,2)):((f_1,f_2),(f_5,f_{10}))$ | $\begin{bmatrix} r_0 \\ r_1 \\ r_2 \\ r_3 \end{bmatrix} = \begin{bmatrix} 1 & 0 & 1 & 0 \\ 0 & 1 & 0 & 1 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} \begin{bmatrix} e_{c_0} \\ e_{c_1} \\ e_{c_2} \\ e_{c_3} \end{bmatrix}$ | Binary strides are columns of $m \times n$ $\mathbb{F}_2$-matrix |
+
+    Table 1: Layouts and their associated linear forms.
+
+    The three rows illustrate progressively more exotic semimodule choices. Integer strides ($\mathcal{D} = \mathbb{Z}$) produce scalar offsets. Coordinate strides ($\mathcal{D} = \mathbb{Z}_{(\ast,\ast)}$) produce coordinate tuples — in practice the `tensor-layouts` library represents this by bundling two integer-stride layouts as modes. Binary strides ($\mathcal{D} = \mathbb{F}_2$) produce XOR-based swizzle patterns — the library represents this via `Swizzle` objects composed with layouts.
     """)
     return
 
 
 @app.cell
 def _(Layout, flatten_tuple, idx2crd, size):
+    # Row 1: Integer strides  D in Z^{1 x n}
     # The linear form: r = D @ e_c
     # For L = ((2,2),(4,2)):((1,8),(2,16)), D = [1 8 2 16] (a 1x4 matrix)
     import numpy as np
     _L = Layout(((2, 2), (4, 2)), ((1, 8), (2, 16)))
-    D_matrix = np.array([[1, 8, 2, 16]])
-    print(f'Layout: {_L}')  # 1x4 matrix
+    D_matrix = np.array([[1, 8, 2, 16]])  # 1x4 matrix
+    print(f'Layout: {_L}')
     print(f'D matrix: {D_matrix}')
     print()
     print('Verifying L(c) = D @ e_c for all in-bounds coordinates:')
-    for c in range(size(_L)):
-        e_c = list(flatten_tuple(idx2crd(c, ((2, 2), (4, 2)))))
     # Verify: for every coordinate, L(c) = D @ e_c
-        offset_layout = _L(c)
-        offset_matrix = (D_matrix @ np.array(e_c)).item()
-        assert offset_layout == offset_matrix
-    for c in [0, 1, 7, 15, 22, 31]:
-        e_c = list(flatten_tuple(idx2crd(c, ((2, 2), (4, 2)))))
-        r = (D_matrix @ np.array(e_c)).item()
-        print(f'  c={c:2d}: e_c={e_c} -> r = [1 8 2 16] . {e_c} = {r}')
+    for _c in range(size(_L)):
+        _e_c = list(flatten_tuple(idx2crd(_c, ((2, 2), (4, 2)))))
+        _offset_layout = _L(_c)
+        _offset_matrix = (D_matrix @ np.array(_e_c)).item()
+        assert _offset_layout == _offset_matrix
     # Show a few examples
+    for _c in [0, 1, 7, 15, 22, 31]:
+        _e_c = list(flatten_tuple(idx2crd(_c, ((2, 2), (4, 2)))))
+        _r = (D_matrix @ np.array(_e_c)).item()
+        print(f'  c={_c:2d}: e_c={_e_c} -> r = [1 8 2 16] . {_e_c} = {_r}')
     print(f'\nAll {size(_L)} coordinates verified: L(c) = D @ e_c.')
+    return (np,)
+
+
+@app.cell
+def _(Layout, flatten_tuple, idx2crd, np, size):
+    # Row 2: Coordinate strides  D in Z_{(*,*)}^{m x n}
+    # L = (4, (4,2)) : (e1, (e0, 6*e1))
+    #
+    # The paper shows strides can be coordinate tuples (e0, e1 basis vectors),
+    # giving an m x n Z-matrix that maps natural coordinates to output coordinates.
+    # In practice, the tensor-layouts library encodes this by bundling two
+    # integer-stride layouts as modes: each row of the D matrix is its own Layout.
+    #
+    # D = [[0, 1, 0],     row 0: r0 = 0*e_c0 + 1*e_c1 + 0*e_c2
+    #      [1, 0, 6]]     row 1: r1 = 1*e_c0 + 0*e_c1 + 6*e_c2
+
+    shape_coord = (4, (4, 2))
+    row0 = Layout(shape_coord, (0, (1, 0)))  # stride selects e_c1
+    row1 = Layout(shape_coord, (1, (0, 6)))  # stride selects e_c0 + 6*e_c2
+
+    # Bundle the two rows into a single layout with 2 modes.
+    L_coord = Layout(row0, row1)
+
+    print(f"Row 0 layout: {row0}")
+    print(f"Row 1 layout: {row1}")
+    print(f"Bundled layout: {L_coord}")
+    print()
+
+    # Verify: the bundled layout maps each coordinate to the (r0, r1) pair
+    # predicted by the D matrix.
+    D_coord = np.array([[0, 1, 0],
+                        [1, 0, 6]])
+
+    print("Verifying bundled Layout matches D @ e_c:")
+    for _c in range(size(row0)):
+        _e_c = list(flatten_tuple(idx2crd(_c, shape_coord)))
+        _r_layout = (row0(_c), row1(_c))
+        _r_matrix = tuple(int(x) for x in D_coord @ np.array(_e_c))
+        assert _r_layout == _r_matrix, f"c={_c}: {_r_layout} != {_r_matrix}"
+
+    for _c in [0, 1, 4, 7, 15, 31]:
+        _e_c = list(flatten_tuple(idx2crd(_c, shape_coord)))
+        print(f"  c={_c:2d}: e_c={_e_c} -> ({row0(_c)}, {row1(_c)})")
+
+    print(f"\nAll {size(row0)} coordinates verified.")
+    print("Each row of the D matrix is a separate integer-stride Layout;")
+    print("bundling them as modes gives the coordinate-producing layout.")
+    return
+
+
+@app.cell
+def _(Layout, Swizzle, compose):
+    # Row 3: Binary (F2) strides  D in F2^{m x n}
+    # L = (4, 4) : (f1, f5)  ≅  ((2,2), (2,2)) : ((f1, f2), (f5, f10))
+    #
+    # The paper shows that XOR-based swizzle patterns are F2-linear.
+    # The tensor-layouts library represents this via Swizzle objects composed
+    # with layouts.  The to_F2_matrix() function extracts the binary matrix.
+
+    from tensor_layouts.analysis import to_F2_matrix
+
+    # Swizzle(bits=2, base=0, shift=2): XOR bits [0,2) with bits [2,4)
+    # On a 4x4 row-major layout (stride 4,1), this gives:
+    #   offset = row*4 + col,  then  offset[0:2] ^= offset[2:4]
+    L_base = Layout((4, 4), (4, 1))
+    L_swizzled = compose(Swizzle(2, 0, 2), L_base)
+
+    print(f"Base layout:     {L_base}")
+    print(f"Swizzle:         Swizzle(bits=2, base=0, shift=2)")
+    print(f"Swizzled layout: {L_swizzled}")
+    print()
+
+    # The F2 matrix captures both the linear strides and the XOR in one matrix.
+    F2 = to_F2_matrix(L_swizzled)
+    print("F2 matrix (offset_bits = M @ coord_bits mod 2):")
+    for row in F2:
+        print(f"  {row}")
+    print()
+
+    # Without the swizzle, the F2 matrix is a simple permutation:
+    F2_base = to_F2_matrix(L_base)
+    print("Without swizzle (row-major stride permutes bit groups):")
+    for row in F2_base:
+        print(f"  {row}")
+    print()
+
+    # Evaluate the swizzled layout to show the XOR pattern
+    print("Swizzled layout evaluation — note XOR pattern in offsets:")
+    for row in range(4):
+        vals = [L_swizzled(row, col) for col in range(4)]
+        print(f"  row {row}: {vals}")
+
+    print()
+    print("The off-diagonal 1s in the F2 matrix are the XOR connections")
+    print("introduced by the Swizzle — this is precisely the F2-linear")
+    print("interpretation of binary strides from Table 1.")
     return
 
 

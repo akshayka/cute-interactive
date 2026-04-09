@@ -5,7 +5,7 @@ import marimo
 # dependencies = [
 #     "marimo>=0.22.0",
 #     "matplotlib",
-#     "tensor-layouts",
+#     "tensor-layouts>=0.2.0",
 # ]
 # ///
 
@@ -73,13 +73,13 @@ def _(mo):
 
 @app.cell
 def _():
-    from tensor_layouts import Layout, Swizzle, compose
+    from tensor_layouts import Layout, Swizzle, compose, blocked_product
     from tensor_layouts.viz import draw_layout
 
     row_major = Layout((4, 2), (2, 1))
     print(row_major)
     draw_layout(row_major, colorize=True)
-    return Layout, Swizzle, compose, draw_layout
+    return Layout, Swizzle, blocked_product, compose, draw_layout
 
 
 @app.cell(hide_code=True)
@@ -165,8 +165,7 @@ def _(mo):
 
 
 @app.cell
-def _(Layout, Swizzle, compose):
-    from tensor_layouts import blocked_product
+def _(Layout, Swizzle, blocked_product, compose):
     local_tile = Layout((2, 2), (2, 1))
     # Local tile: 2x2 row-major (contiguous 4 elements per device, PyTorch convention)
     device_mesh = Layout((4, 2), (2, 1))
@@ -184,7 +183,7 @@ def _(Layout, Swizzle, compose):
         devices = [f'd{full(_i, j) // 4}' for j in range(4)]
     # Print the 8x4 grid with device assignments
         print(f"  row {_i}: offsets [{', '.join(offsets)}]  devices [{', '.join(devices)}]")
-    return blocked_product, full
+    return (full,)
 
 
 @app.cell
